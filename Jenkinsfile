@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/krishnakumarayeenduguli/devops-automation.git'
+                git branch: 'master', url: 'https://github.com/krishnakumarayeenduguli/devops-automation.git'
             }
         }
         stage('Maven Build') {
