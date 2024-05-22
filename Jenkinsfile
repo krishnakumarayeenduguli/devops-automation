@@ -1,41 +1,62 @@
 pipeline {
     agent any
-    tools{
-        maven 'maven'
+    environment {
+        REMOTE_SERVER = '13.200.249.27'
+        REMOTE_USER = 'ubuntu'
+       
     }
-    
-    stages{
-        stage('Build Maven'){
-            steps{
-                checkout([$class: 'GitSCM', branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/sureshrajuvetukuri/devops-automation.git']]])
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/krishnakumarayeenduguli/devops-automation.git'
+            }
+        }
+        stage('Maven Build') {
+            steps {
                 sh 'mvn clean install'
             }
-        }
-        stage('Build docker image'){
-            steps{
-                script{
-                    sh 'docker build -t suresh394/kubernetes .'
+            post {
+                success {
+                    archiveArtifacts artifacts: '**/target/*.jar'
                 }
             }
         }
-        stage('Push image to hub'){
-            steps{
-                script{
-                    withCredentials([string(credentialsId: 'dockerhubpwd', variable: 'dockerhubpwd')]) {
-                    sh 'docker login -u suresh394 -p ${dockerhubpwd}'
-                        
+        stage('Maven Test') {
+            steps {
+                sh 'mvn test'
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t devops-automation:latest .'
+                sh 'docker tag devops-automation krishnakumarayeenduguli/devops-automation:latest'
+            }
+        }
+        stage('Login to DockerHub') {
+            steps {
+                sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
+            }
+        }
+        stage('Push Image to DockerHub') {
+            steps {
+                sh 'docker push krishnakumarayeenduguli/devops-automation:latest'
+            }
+            post {
+                always {
+                    sh 'docker logout'
+                }
+            }
+        }
+        stage('Deploy Docker Image to AWS Instance') {
+            steps {
+                script {
+                    sshagent(credentials: ['awscred']) {
+                        sh "ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_SERVER} 'docker stop javaApp || true && docker rm javaApp || true'"
+                        sh "ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_SERVER} 'docker pull krishnakumarayeenduguli/devops-automation:latest'"
+                        sh "ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_SERVER} 'docker run --name javaApp -d -p 80:8080 krishnakumarayeenduguli/devops-automation:latest'"
                     }
-                    sh 'docker push suresh394/kubernetes'
                 }
             }
         }
-        stage('Deploy to K8s'){
-            steps{
-                script{
-                    kubernetesDeploy (configs: 'deploymentservice.yaml',kubeconfigId: 'kubeconfig')
-                }
-            }
-        }
-    
-    }    
+    }
 }
